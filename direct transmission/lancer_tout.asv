@@ -1,0 +1,52 @@
+% =========================================================
+%   MAIN SIMULATION — V1
+%   Lance RS puis DT dans le bon ordre
+% =========================================================
+clc; clear; close all;
+
+fprintf('=================================================\n');
+fprintf('   SIMULATION V1 — GROUPES + ÉTATS BASIQUES\n');
+fprintf('=================================================\n\n');
+
+fprintf('>>> ÉTAPE 1 : RÉSEAU PHYSIQUE (RS)\n');
+fprintf('─────────────────────────────────────────────────\n');
+reseau_physique;
+
+fprintf('\n>>> ÉTAPE 2 : JUMEAU NUMÉRIQUE (DT)\n');
+fprintf('─────────────────────────────────────────────────\n');
+jumeau_numerique;
+
+% ─────────────────────────────────────────────────────────
+% ÉTAPE 3 — Rx : RÉCEPTION ET APPLICATION CÔTÉ RS
+% ─────────────────────────────────────────────────────────
+fprintf('\n>>> ÉTAPE 3 : Rx — RÉCEPTION DES DÉCISIONS (RS)\n');
+fprintf('─────────────────────────────────────────────────\n');
+
+load('decision_jumeau.mat');
+
+fprintf('[Rx]          Instructions reçues du DT\n');
+fprintf('[Rx]          Groupe : %s | Décision : %s | TTL : %dh\n',...
+        reponse.groupe_id, reponse.decision, reponse.TTL);
+fprintf('[Rx]          Nouvelles clés par noeud :\n');
+
+for idx = 1:length(reponse.nouvelles_cles)
+    nc = reponse.nouvelles_cles(idx);
+    fprintf('  N%d : %s (%s)\n', nc.noeud, nc.cle,...
+            ternaire_str(nc.test_ok, '✅ validée', '❌ rejetée'));
+end
+
+fprintf('\n[APPLICATION] ✅ Clés appliquées sur le Groupe %s\n',...
+        reponse.groupe_id);
+fprintf('[APPLICATION] Communication sécurisée établie\n');
+
+fprintf('\n=================================================\n');
+fprintf('   SIMULATION V1 TERMINÉE\n');
+fprintf('=================================================\n');
+
+function res = ternaire_str(condition, si_vrai, si_faux)
+    if condition
+        res = si_vrai;
+    else
+        res = si_faux;
+    end
+end
