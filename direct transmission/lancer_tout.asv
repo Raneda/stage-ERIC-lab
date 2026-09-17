@@ -1,52 +1,200 @@
 % =========================================================
-%   MAIN SIMULATION — V1
-%   Lance RS puis DT dans le bon ordre
+%   MAIN SIMULATION — Phase 2 / Pré-distribution clés + Refresh
+%   RS → Twinning → DT → RS → Analyse énergie/mémoire détaillée
 % =========================================================
-clc; clear; close all;
+clc; clear;
 
 fprintf('=================================================\n');
-fprintf('   SIMULATION V1 — GROUPES + ÉTATS BASIQUES\n');
+fprintf('   SIMULATION — Phase 2 / Pré-distribution clés + Refresh\n');
 fprintf('=================================================\n\n');
 
-fprintf('>>> ÉTAPE 1 : RÉSEAU PHYSIQUE (RS)\n');
-fprintf('─────────────────────────────────────────────────\n');
+% =========================================================
+% ÉTAPE 1 — RS
+% =========================================================
+fprintf('>>> ÉTAPE 1 : RS — Déploiement + ID clés\n');
 reseau_physique;
 
-fprintf('\n>>> ÉTAPE 2 : JUMEAU NUMÉRIQUE (DT)\n');
-fprintf('─────────────────────────────────────────────────\n');
+% =========================================================
+% ÉTAPE 2 — DT
+% =========================================================
+fprintf('\n>>> ÉTAPE 2 : DT — Génération + Refresh\n');
 jumeau_numerique;
 
-% ─────────────────────────────────────────────────────────
-% ÉTAPE 3 — Rx : RÉCEPTION ET APPLICATION CÔTÉ RS
-% ─────────────────────────────────────────────────────────
-fprintf('\n>>> ÉTAPE 3 : Rx — RÉCEPTION DES DÉCISIONS (RS)\n');
-fprintf('─────────────────────────────────────────────────\n');
+% =========================================================
+% ÉTAPE 3 — RS : Réception des clés
+% =========================================================
+fprintf('\n>>> ÉTAPE 3 : RS — Réception des clés\n');
 
 load('decision_jumeau.mat');
+load('canal_twinning.mat');
 
-fprintf('[Rx]          Instructions reçues du DT\n');
-fprintf('[Rx]          Groupe : %s | Décision : %s | TTL : %dh\n',...
-        reponse.groupe_id, reponse.decision, reponse.TTL);
-fprintf('[Rx]          Nouvelles clés par noeud :\n');
+x         = transmission.x;
+y         = transmission.y;
+n         = transmission.n;
+breadth   = transmission.breadth;
+voisins   = transmission.voisins;
+appartient = transmission.appartient;
+nb_groupes = transmission.nb_groupes;
 
-for idx = 1:length(reponse.nouvelles_cles)
-    nc = reponse.nouvelles_cles(idx);
-    fprintf('  N%d : %s (%s)\n', nc.noeud, nc.cle,...
-            ternaire_str(nc.test_ok, '✅ validée', '❌ rejetée'));
+nb_paires   = reponse.nb_paires;
+nb_refresh  = reponse.nb_refresh;
+
+fprintf('[Rx] %d clés pré-distribuées + %d refresh\n', nb_paires, nb_refresh);
+
+% =========================================================
+% Stockage local des clés
+% =========================================================
+cles_locales = cell(n, 1);
+for i = 1:n
+    cles_locales{i} = struct('paire',{},'cle',{});
 end
 
-fprintf('\n[APPLICATION] ✅ Clés appliquées sur le Groupe %s\n',...
-        reponse.groupe_id);
-fprintf('[APPLICATION] Communication sécurisée établie\n');
-
-fprintf('\n=================================================\n');
-fprintf('   SIMULATION V1 TERMINÉE\n');
-fprintf('=================================================\n');
-
-function res = ternaire_str(condition, si_vrai, si_faux)
-    if condition
-        res = si_vrai;
-    else
-        res = si_faux;
+% Pré-distribution
+for p = 1:reponse.nb_paires
+    cle = reponse.cles_generees(p);
+    if cle.valide
+        ni = cle.noeud_i; nj = cle.noeud_j;
+        cles_locales{ni}(end+1).paire = sprintf('N%d-N%d',ni,nj);
+        cles_locales{ni}(end).cle = cle.cle;
+        cles_locales{nj}(end+1).paire = sprintf('N%d-N%d',ni,nj);
+        cles_locales{nj}(end).cle = cle.cle;
     end
 end
+
+% Refresh
+for k = 1:reponse.nb_refresh
+    cle_r = reponse.cles_refresh(k);
+    if cle_r.valide
+        ni = cle_r.noeud_i; nj = cle_r.noeud_j;
+        cles_locales{ni}(end+1).paire = sprintf('N%d-N%d',ni,nj);
+        cles_locales{ni}(end).cle = cle_r.cle;
+        cles_locales{nj}(end+1).paire = sprintf('N%d-N%d',ni,nj);
+        cles_locales{nj}(end).cle = cle_r.cle;
+    end
+end
+
+save('cles_locales_rs.mat','cles_locales');
+
+% =========================================================
+% FIGURE RS — Communications sécurisées
+% =========================================================
+figure('Name','RS — Communications sécurisées',...
+       'NumberTitle','off','Position',[50 80 700 600]);
+hold on;
+
+couleurs = lines(nb_groupes);
+
+% Voisinage
+for i = 1:n
+    for j = voisins{i}
+        if j > i
+            line([x(i) x(j)], [y(i) y(j)], 'Color',[0.85 0.85 0.85],...
+                 'LineWidth',0.8,'LineStyle','--');
+        end
+    end
+end
+
+% Pré-distribution (vert)
+for p = 1:reponse.nb_paires
+    cle = reponse.cles_generees(p);
+    if cle.valide
+        ni = cle.noeud_i; nj = cle.noeud_j;
+        line([x(ni) x(nj)], [y(ni) y(nj)], 'Color',[0.05 0.65 0.35],...
+             'LineWidth',3);
+    end
+end
+
+% Refresh (rouge)
+for k = 1:reponse.nb_refresh
+    cle_r = reponse.cles_refresh(k);
+    if cle_r.valide
+        ni = cle_r.noeud_i; nj = cle_r.noeud_j;
+        line([x(ni) x(nj)], [y(ni) y(nj)], 'Color',[0.85 0.1 0.1],...
+             'LineWidth',3,'LineStyle','--');
+    end
+end
+
+title(sprintf('RS — %d clés | %d refresh', nb_paires, nb_refresh));
+grid on;
+
+% =========================================================
+% SCÉNARIO : N1 ↔ N2
+% =========================================================
+fprintf('\n>>> SCÉNARIO : Communication N1 ↔ N2\n');
+try
+    cle_info = dt_get_key(1, 2);
+    fprintf('[COMMUNICATION] N1 ↔ N2 utilise la clé : %s\n', cle_info.cle);
+catch ME
+    fprintf('[COMMUNICATION] Erreur : %s\n', ME.message);
+end
+
+% =========================================================
+% ANALYSE — Énergie & Mémoire détaillée (1 seule fenêtre)
+% =========================================================
+fprintf('\n>>> ANALYSE — Énergie & Mémoire détaillée\n');
+
+% Coûts
+E_GEN   = 5;
+E_TEST  = 3;
+E_HASH  = 2;
+E_RS_RS = 6;
+E_RS_DT = 2;
+E_DT_RS = 3;
+
+M_CLE  = 0.2;
+M_ETAT = 0.21;
+M_LOG  = 0.6;
+
+% =========================================================
+% FIGURE UNIQUE — 7 sous-graphes
+% =========================================================
+figure('Name','Analyse RS — Énergie & Mémoire détaillée',...
+       'NumberTitle','off','Position',[800 80 1200 900]);
+set(gcf,'WindowStyle','normal'); movegui('center');
+
+% 1) BARRES GLOBALES — RS sans DT vs RS avec DT
+subplot(3,3,1);
+bar([nb_paires*(E_GEN+E_TEST+E_HASH+E_RS_RS), nb_paires*(E_RS_DT+E_DT_RS)]);
+set(gca,'XTickLabel',{'RS sans DT','RS avec DT'});
+title('Énergie — Global'); ylabel('Unités'); grid on;
+
+subplot(3,3,2);
+bar([nb_paires*(M_CLE+M_ETAT+M_LOG), nb_paires*M_CLE]);
+set(gca,'XTickLabel',{'RS sans DT','RS avec DT'});
+title('Mémoire — Global'); ylabel('Ko'); grid on;
+
+% 2) Transmission RS↔RS
+subplot(3,3,3);
+bar(nb_paires * E_RS_RS);
+title('Énergie — Transmission RS↔RS'); ylabel('Unités'); grid on;
+
+% 3) Transmission RS→DT
+subplot(3,3,4);
+bar(nb_paires * E_RS_DT);
+title('Énergie — Transmission RS→DT'); ylabel('Unités'); grid on;
+
+% 4) Transmission DT→RS
+subplot(3,3,5);
+bar(nb_paires * E_DT_RS);
+title('Énergie — Transmission DT→RS'); ylabel('Unités'); grid on;
+
+% 5) Calculs (GEN + TEST + HASH)
+subplot(3,3,6);
+bar(nb_paires * (E_GEN + E_TEST + E_HASH));
+title('Énergie — Calculs'); ylabel('Unités'); grid on;
+
+% 6) Mémoire — Clés
+subplot(3,3,7);
+bar(nb_paires * M_CLE);
+title('Mémoire — Clés'); ylabel('Ko'); grid on;
+
+% 7) Mémoire — États + Logs
+subplot(3,3,8);
+bar(nb_paires * (M_ETAT + M_LOG));
+title('Mémoire — États + Logs'); ylabel('Ko'); grid on;
+
+fprintf('\n>>> Analyse détaillée générée dans une seule fenêtre.\n');
+
+fprintf('\n=================================================\n');
+fprintf('   SIMULATION TERMINÉE\n');
+fprintf('=================================================\n');
